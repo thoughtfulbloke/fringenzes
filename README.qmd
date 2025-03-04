@@ -1,0 +1,921 @@
+---
+title: "Young people these days"
+author: "David Hood"
+format:
+  gfm:
+    fig-width: 6.66
+    fig-height: 4.44
+    fig-dpi: 300
+    warning: false
+    echo: false
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r suports}
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(ggplot2)
+library(ggthemes)
+library(foreign) # read NZES SPSS files
+source("functions_and_themes.R")
+```
+
+(note, this is the easier to read md version which github displays as a webpage. To see the R analysis code check the README.qmd version of the file)
+
+In the wake of the current German election, there has been discussion about decades long trends in changes in voting behaviour in not just Germany, but in countries like the US and UK. If you place people on a left right spectrum (which I personally am not entirely comfortable as a global framing device) there are long term trends for middle-aged people moving right and 18-30 moving to extremes, and those young men and women moving in very different directions.
+
+New Zealand does not have the full population voting demographic data of Germany, but does have the New Zealand Election Study which includes both voting information and values questions.
+
+https://dataverse.ada.edu.au/dataverse.xhtml?alias=new-zealand-election-study
+
+```{r NZESsource}
+nz20 <- suppressWarnings(read.spss("nzes/DATA - 2020 New Zealand Election Study - SPSS.sav",
+                                   to.data.frame = TRUE, add.undeclared.levels = "sort"))
+nz20meta <- data.frame(varnames = attributes(nz20)$names, eyear=2020,
+                       descriptions = attributes(nz20)$variable.labels,
+                       stringsAsFactors = FALSE)
+nz17 <- suppressWarnings(read.spss("nzes/NZES2017Release14-07-19.sav",
+                                    to.data.frame = TRUE, add.undeclared.levels = "sort"))
+nz17meta <- data.frame(varnames = attributes(nz17)$names, eyear=2017,
+                     descriptions = attributes(nz17)$variable.labels,
+                     stringsAsFactors = FALSE)
+nz14 <- suppressWarnings(read.spss("nzes/NZES2014GeneralReleaseApril16.sav",
+                                    to.data.frame = TRUE, add.undeclared.levels = "sort"))
+nz14meta <- data.frame(varnames = attributes(nz14)$names, eyear=2014,
+                     descriptions = attributes(nz14)$variable.labels,
+                     stringsAsFactors = FALSE)
+nz11 <- suppressWarnings(read.spss("nzes/NZES2011_Jun_18_rel.sav",
+                                    to.data.frame = TRUE, add.undeclared.levels = "sort"))
+nz11meta <- data.frame(varnames = attributes(nz11)$names, eyear=2011,
+                     descriptions = attributes(nz11)$variable.labels,
+                     stringsAsFactors = FALSE)
+nz08 <- suppressWarnings(read.spss("nzes/2008NZES_Release.sav",
+                                    to.data.frame = TRUE, add.undeclared.levels = "sort"))
+nz08meta <- data.frame(varnames = attributes(nz08)$names, eyear=2008,
+                     descriptions = attributes(nz08)$variable.labels,
+                     stringsAsFactors = FALSE)
+nz05 <- suppressWarnings(read.spss("nzes/NZES_Release_05.sav",
+                                    to.data.frame = TRUE, add.undeclared.levels = "sort"))
+nz05meta <- data.frame(varnames = attributes(nz05)$names, eyear=2005,
+                     descriptions = attributes(nz05)$variable.labels,
+                     stringsAsFactors = FALSE)
+nz02 <- suppressWarnings(read.spss("nzes/nzes_02_1.1.por",
+                                    to.data.frame = TRUE, add.undeclared.levels = "sort"))
+nz02meta <- data.frame(varnames = attributes(nz02)$names, eyear=2002,
+                     descriptions = attributes(nz02)$variable.labels,
+                     stringsAsFactors = FALSE)
+nzmeta <- bind_rows(nz02meta, nz05meta, nz08meta, nz11meta, nz14meta, nz17meta, nz20meta)
+# nzmeta is for searching decriptions across all years to find related questions
+
+rm(nz02meta, nz05meta, nz08meta, nz11meta, nz14meta, nz17meta, nz20meta)
+```
+
+For New Zealand, I personally don't think the detailed party vote is useful- we know that about 29% are changed their party vote at the 2017 election, and given the sample sizes I think a cohort/party model loses that inter-election complexity (and that it can matter). There is a lot going on not captured in the basic percentages.
+
+```{r votechange}
+change_percents <- nz17 %>% mutate(swapped = ifelse(as.character(rlastpvote) == as.character(rpartyvote) &
+                  !is.na(rlastpvote) & !is.na(rpartyvote),"Stable", "Change")) %>%
+filter(rlastpvote != "0. I Did not vote / Was not eliglble",
+       rlastpvote != "99. Don't Know", rpartyvote != "99. Don't Know") %>% 
+  select(rlastpvote, rpartyvote, rwt, swapped) %>%
+summarise(number_stable = sum((swapped == "Stable") * rwt),
+          number_change = sum((swapped == "Change") * rwt),
+          percent_changed = 100 * number_change/(number_stable + number_change))
+```
+
+```{r rightvotesgraph}
+disply_tbl <- data.frame(
+  stringsAsFactors = FALSE,
+                            Year = c(2002L,2002L,2005L,2005L,2008L,2008L,
+                                     2011L,2011L,2014L,2014L,2017L,2017L,2020L,
+                                     2020L,2023L,2023L),
+                           Party = c("National","ACT","National","ACT",
+                                     "National","ACT","National","ACT","National",
+                                     "ACT","National","ACT","National","ACT",
+                                     "National","ACT"),
+                      Vote.Share = c(20.93,7.14,39.1,1.51,44.93,3.65,47.31,
+                                     1.07,47.04,0.69,36.89,1.01,25.58,7.59,
+                                     38.06,8.64)
+              )
+
+ggplot(disply_tbl, aes(fill=Party, y=Vote.Share, x=Year)) + 
+    geom_bar(position="stack", stat="identity", width=1.5) +
+  scale_fill_manual(values=c("#FDE401","#00529F")) +
+  scale_x_continuous(breaks=c(seq(from=2002,to=2023,by=3))) +
+  theme_davidhood() +
+  labs(title="Election vote share among parties always forming right-wing coalitions",
+       subtitle="Percentage of total votes. Blue= centre right party, yellow= further right",
+       caption = "Source Data: New Zealand Election Study")
+```
+
+People in New Zealand should be looking at that graph and going "but that has to be understood in relation to other parties (not shown) and time in power (not shown)". At least, that is how I react.
+
+There is a similar issue with voter placement given vote splitting (voting for a different party for local representative to the vote for national parliament makeup). From around 20% of electors (elderly) to around 40% (younger voters). This graph wasn't custom made for this analysis, I did it a few years ago and am just reusing it.
+
+![Vote Splitting by age](othergraphs/votesplit.jpeg)
+
+But there are lots of other, I think more useful, questions that step around this multiple vote issues etc.
+
+## The boring technical summaries
+
+To make it easier for anyone replicating these splits by age, gender, and election year, here are relevant field from the data.
+
+```{r agefields}
+#| label: tbl-agefields
+#| tbl-cap: "Fields for ages"
+disply_tbl <- data.frame(
+  stringsAsFactors = FALSE,
+          varnames = c("WNAGE", "YAGE", "ZAGE", "jage", "dage", "rsamage", "lage"),
+             eyear = c(2002L, 2005L, 2008L, 2011L, 2014L, 2017L, 2020L),
+      descriptions = c("age in years","Age in Years",
+                       "age of respondent",
+                       "Respondent's age in years","Age in Years",
+                       "F2: Age in Years","Age in Years Sample"))
+
+kable(disply_tbl)
+```
+
+```{r genderfields}
+#| label: tbl-gender
+#| tbl-cap: "Fields for gender"
+disply_tbl <- data.frame(
+  stringsAsFactors = FALSE,
+          varnames = c("WSEX", "ysex", "zsex", "jsex", "dsex", "rsex", "G1"),
+             eyear = c(2002L, 2005L, 2008L, 2011L, 2014L, 2017L, 2020L),
+      descriptions = c("G1. Gender",
+                       "G1 Gender of Respondent","H1: Gender or Sex","F1: respondent's gender",
+                       "F1: respondent's gender","F1: respondent's gender",
+                       "Sex or Gender"))
+kable(disply_tbl)
+
+```
+
+```{r makingAgegroups}
+
+nzs02 <- nz02 %>% 
+  mutate(Year=2002,
+         Age = case_when(WNAGE < 30 ~ "18 to 30",
+                         WNAGE >= 30 & WNAGE < 65 ~ "31 to 64",
+                         WNAGE >= 65 ~ "65 plus"),
+         Gender = case_when(WSEX == "male" ~ "Male",
+                         WSEX == "Female" ~ "Female")) 
+
+
+nzs05 <- nz05 %>% 
+  mutate(Year=2005,
+         Age = case_when(YAGE < 30 ~ "18 to 30",
+                         YAGE >= 30 & YAGE < 65 ~ "31 to 64",
+                         YAGE >= 65 ~ "65 plus"),
+         Gender = case_when(ysex == "Male" ~ "Male",
+                         ysex == "Female" ~ "Female")) 
+
+nzs08 <- nz08 %>% 
+  mutate(Year=2008,
+         Age = case_when(ZAGE < 30 ~ "18 to 30",
+                         ZAGE >= 30 & ZAGE < 65 ~ "31 to 64",
+                         ZAGE >= 65 ~ "65 plus"),
+         Gender = case_when(zsex == "Male" ~ "Male",
+                         zsex == "Female" ~ "Female")) 
+
+nzs11 <- nz11 %>% 
+  mutate(Year=2011,
+         Age = case_when(jage < 30 ~ "18 to 30",
+                         jage >= 30 & jage < 65 ~ "31 to 64",
+                         jage >= 65 ~ "65 plus"),
+         Gender = case_when(jsex == "Male" ~ "Male",
+                         jsex == "Female" ~ "Female")) 
+
+  
+nzs14 <- nz14 %>% 
+  mutate(Year=2014,
+         Age = case_when(dage < 30 ~ "18 to 30",
+                         dage >= 30 & dage < 65 ~ "31 to 64",
+                         dage >= 65 ~ "65 plus"),
+         Gender = case_when(dsex == "Male" ~ "Male",
+                         dsex == "Female" ~ "Female")) 
+
+
+nzs17 <- nz17 %>% 
+  mutate(Year=2017,
+         Age = case_when(rsamage < 30 ~ "18 to 30",
+                         rsamage >= 30 & rsamage < 65 ~ "31 to 64",
+                         rsamage >= 65 ~ "65 plus"),
+         Gender = case_when(rsex == "1. Male" ~ "Male",
+                         rsex == "2. Female" ~ "Female",
+                         rsex == "3. Gender diverse" ~ "Gender diverse")) 
+
+
+nzs20 <- nz20 %>% 
+  mutate(Year=2020,
+         Age = case_when(lage < 30 ~ "18 to 30",
+                         lage >= 30 & lage < 65 ~ "31 to 64",
+                         lmage >= 65 ~ "65 plus"),
+         Gender = case_when(G1 == "1. Male" ~ "Male",
+                         G1 == "2. Female" ~ "Female",
+                         G1 == "3. Gender diverse" ~ "Gender diverse")) 
+rm(nz02,nz05,nz08,nz11,nz14,nz17,nz20)
+```
+
+### Total entries by age, male
+
+```{r ageGroupsMale}
+#| label: tbl-agesM
+#| tbl-cap: "Male age groups by year"
+bind_rows(nzs02 |> select(Year,Age,Gender),
+          nzs05 |> select(Year,Age,Gender),
+          nzs11 |> select(Year,Age,Gender),
+          nzs14 |> select(Year,Age,Gender),
+          nzs17 |> select(Year,Age,Gender),
+          nzs20 |> select(Year,Age,Gender)) |> 
+  filter(!is.na(Age), Gender == "Male") |> 
+  summarise(.by = Year,
+            `under 30` = sum(Age == "18 to 30"),
+            `31 to 64` = sum(Age == "31 to 64"),
+            `65 plus` = sum(Age == "65 plus")) |> 
+  kable()
+```
+
+### Total entries by age, female
+
+```{r ageGroupsfemale}
+#| label: tbl-agesF
+#| tbl-cap: "Female age groups by year"
+bind_rows(nzs02 |> select(Year,Age,Gender),
+          nzs05 |> select(Year,Age,Gender),
+          nzs11 |> select(Year,Age,Gender),
+          nzs14 |> select(Year,Age,Gender),
+          nzs17 |> select(Year,Age,Gender),
+          nzs20 |> select(Year,Age,Gender)) |> 
+  filter(!is.na(Age), Gender == "Female") |> 
+  summarise(.by = Year,
+            `under 30` = sum(Age == "18 to 30"),
+            `31 to 64` = sum(Age == "31 to 64"),
+            `65 plus` = sum(Age == "65 plus")) |> 
+  kable()
+```
+
+### Total entries by age, gender diverse
+
+```{r ageGroupsGenderDiverse}
+#| label: tbl-agesGD
+#| tbl-cap: "Gender Diverse age groups by year"
+bind_rows(nzs02 |> select(Year,Age,Gender),
+          nzs05 |> select(Year,Age,Gender),
+          nzs11 |> select(Year,Age,Gender),
+          nzs14 |> select(Year,Age,Gender),
+          nzs17 |> select(Year,Age,Gender),
+          nzs20 |> select(Year,Age,Gender)) |> 
+  filter(!is.na(Age), Gender == "Gender diverse") |> 
+  summarise(.by = Year,
+            `under 30` = sum(Age == "18 to 30"),
+            `31 to 64` = sum(Age == "31 to 64"),
+            `65 plus` = sum(Age == "65 plus")) |> 
+  kable()
+```
+
+As well as the sample sizes and interpretation of the two vote structural issues, I would also note that gender diverse people do tend to be disproportionately anti-fascist/authoritarian (not surprising given how fascist/authoritarians want to treat them), so a change in gender categories could be changing the results by a couple of percent relative to the category counts before the gender diverse category was available.
+
+Given all this, I would describe the following analysis as an "impressionist painting" level of detail- it creates an overall picture across multiple years and difference characters, rather than making a specific number claim as an aggregate of questions.
+
+The thing I think it would be most useful to do further breakdowns of is ethnic identification, but the numbers are getting small even now, the ethnic data is limited in the NZES, and the comparitive overseas discussion is mostly at the gender/age level anyway (rather than regional/ethnic). So I think this is good enough for, as mentioned, an impressionist painting.
+
+## Ask them
+
+One question asked every election is for people to rate themselves on a left-right scale
+
+```{r fieldsselflr}
+#| label: tbl-selflr
+#| tbl-cap: "Respondent left-right self rating"
+
+datadefn <- data.frame(
+  stringsAsFactors = FALSE,
+          varnames = c("WLRSCLE","ylscale","zscale",
+                       "jslflr","dslflr","rselflr","B8"),
+             eyear = c(2002L, 2005L, 2008L, 2011L, 2014L, 2017L, 2020L),
+      descriptions = c("B11. Respondent on Left-Right Scale","B9 Left to Right Scale",
+                       "C17: On Left Right Scale Respondent","A19: yourself on left-right scale",
+                       "B6: yourself on left-right scale",
+                       "B6: yourself on left-right scale","Personal Left Right Placement")
+)
+
+kable(datadefn)
+
+```
+
+This is a 10 step scale, So I am treating Left or 1 (ordinal 1 or 2) as far left, 9 or Right (ordinal 10 or 11) as far right, with ordinal 12 being don't know.
+
+```{r factorsselflr}
+#| label: tbl-selflrsteps
+#| tbl-cap: "Respondent left-right 2017 choices"
+kable(order_contents(nzs17[[datadefn$varnames[datadefn$eyear == "2017"]]]))
+```
+
+
+```{r prepselflr}
+grafdata <- yes_no_dunno(nzs02, datadefn$varnames[datadefn$eyear == "2002"],thumbsup=c(0,1), thumbsdown=c(10,11), waitwhat=12) |> 
+  bind_rows(yes_no_dunno(nzs05, datadefn$varnames[datadefn$eyear == "2005"],thumbsup=c(0,1), thumbsdown=c(10,11), waitwhat=12)) |> 
+  bind_rows(yes_no_dunno(nzs08, datadefn$varnames[datadefn$eyear == "2008"],thumbsup=c(0,1), thumbsdown=c(10,11), waitwhat=12)) |> 
+  bind_rows(yes_no_dunno(nzs11, datadefn$varnames[datadefn$eyear == "2011"],thumbsup=c(0,1), thumbsdown=c(10,11), waitwhat=12)) |> 
+  bind_rows(yes_no_dunno(nzs14, datadefn$varnames[datadefn$eyear == "2014"],thumbsup=c(0,1), thumbsdown=c(10,11), waitwhat=12)) |> 
+  bind_rows(yes_no_dunno(nzs17, datadefn$varnames[datadefn$eyear == "2017"],thumbsup=c(0,1), thumbsdown=c(10,11), waitwhat=12)) |> 
+  bind_rows(yes_no_dunno(nzs20, datadefn$varnames[datadefn$eyear == "2020"],thumbsup=c(0,1), thumbsdown=c(10,11), waitwhat=12)) |> 
+  filter(!is.na(Age),!is.na(Gender), Gender %in% c("Male", "Female")) |> 
+  pivot_longer(Strongly_Agree:Dont_Know, names_to = "Response", values_to = "Percentage") |> 
+  mutate(Percentage = ifelse(Response == "Dont_Know" & Percentage == 0, NA_real_, Percentage),
+         Response = case_when(Response == "Strongly_Agree" ~ "Far_Left",
+                              Response == "Strongly_Disagree" ~ "Far_Right",
+                              Response == "Dont_Know" ~ "Dont_Know"))
+```
+
+```{r graphselflr}
+ggplot(grafdata, aes(x=Year, y=Percentage, colour=Gender)) +
+  geom_point(alpha=0.2) + geom_line() + 
+  facet_grid(Age ~ Response) +
+  theme_davidhood() +
+  scale_color_colorblind() +
+  labs(title="NZES responses to 'Rate yourself on a left to right scale'",
+       subtitle="Percentage of respondents, Don't knows and extreme repsonses only",
+       caption = "Source Data: New Zealand Election Study")
+```
+
+There is no particular change in self decriptors visible here over time.Though the younger you are the less far right you tend to describe yourself, this does not seem to vary between genders.
+
+## Ask them, compared to
+
+Each election study also asks respondents to rate the current parties, so we can take the average value for the two main parties (one of who is always been the major partner in any coalition, being decribed as a x-lead government) and check how far they rate themselves from that "de facto centre". If they rate the average of the two main parties as being in the centre, then their own position is unchanged. But if for example they rated both main parties as communists and themselves as centrist, then their relative (to the biggest and best known parties) position would be to the far right.
+
+```{r fieldsrelativelr}
+#| label: tbl-relativelr
+#| tbl-cap: "Respondent left-right relative rating"
+
+# this data is carefully in self, labour national order for each year,
+# as I depend on that order for an in-function calculation later
+datadefn <- data.frame(
+  stringsAsFactors = FALSE,
+          varnames = c("WLRSCLE","WLBSCL","WNTSCL",
+                       "ylscale","ylabscl","ynatscl","zscale","zscllab",
+                       "zsclnat","jslflr","jlablr","jnatlr","dslflr","dlablr",
+                       "dnatlr","rselflr","rlabourlr","rnationallr","B8",
+                       "B7_1","B7_2"),
+             eyear = c(2002L,2002L,2002L,2005L,
+                       2005L,2005L,2008L,2008L,2008L,2011L,2011L,2011L,
+                       2014L,2014L,2014L,2017L,2017L,2017L,2020L,2020L,2020L),
+      descriptions = c("B11. Respondent on Left-Right Scale","B12. Labour on Left-Right Scale",
+                       "B12. National on Left-Right Scale","B9 Left to Right Scale",
+                       "b10b Placing Left Right Labour",
+                       "B10a Placing Left Right National","C17: On Left Right Scale Respondent",
+                       "C16b: On Left Right Scale Labour",
+                       "C16a: On Left Right Scale National","A19: yourself on left-right scale",
+                       "A18: Labour on left-right scale","A18: National on left-right scale",
+                       "B6: yourself on left-right scale",
+                       "B5: Labour on left-right scale","B5: National on left-right scale",
+                       "B6: yourself on left-right scale",
+                       "B5a: Labour on left-right scale","B5b: National on left-right scale",
+                       "Personal Left Right Placement","Left Right Placement of Labour",
+                       "Left Right Placement of National")
+)
+
+kable(datadefn)
+
+```
+
+
+```{r preprelativelr}
+grafdata <- yes_no_dunno_3var(nzs02, datadefn$varnames[datadefn$eyear == "2002"]) |> 
+  bind_rows(yes_no_dunno_3var(nzs05, datadefn$varnames[datadefn$eyear == "2005"])) |> 
+  bind_rows(yes_no_dunno_3var(nzs08, datadefn$varnames[datadefn$eyear == "2008"])) |> 
+  bind_rows(yes_no_dunno_3var(nzs11, datadefn$varnames[datadefn$eyear == "2011"])) |> 
+  bind_rows(yes_no_dunno_3var(nzs14, datadefn$varnames[datadefn$eyear == "2014"])) |> 
+  bind_rows(yes_no_dunno_3var(nzs17, datadefn$varnames[datadefn$eyear == "2017"])) |> 
+  bind_rows(yes_no_dunno_3var(nzs20, datadefn$varnames[datadefn$eyear == "2020"])) |> 
+  filter(!is.na(Age),!is.na(Gender), Gender %in% c("Male", "Female")) |> 
+  pivot_longer(Strongly_Agree:Dont_Know, names_to = "Response", values_to = "Percentage") |> 
+  mutate(Percentage = ifelse(Response == "Dont_Know" & Percentage == 0, NA_real_, Percentage),
+         Response = case_when(Response == "Strongly_Agree" ~ "Far_Left",
+                              Response == "Strongly_Disagree" ~ "Far_Right",
+                              Response == "Dont_Know" ~ "Dont_Know"))
+```
+
+```{r graphrelativelr}
+ggplot(grafdata, aes(x=Year, y=Percentage, colour=Gender)) +
+  geom_point(alpha=0.2) + geom_line() + 
+  facet_grid(Age ~ Response) +
+  theme_davidhood() +
+  scale_color_colorblind() +
+  labs(title="NZES, extreme self rating of left or right compared to Labour and National",
+       subtitle="Percentage of respondents, Don't knows and extreme repsonses only",
+       caption = "Source Data: New Zealand Election Study")
+```
+
+Taking this approach has raised the far left relative to the far right, suggesting there is a constituency of people who view themselves not as far left but do view both major parties as being right of centre. But it doesn't really change anything with regard to long term trens and gender splits (there not being much happening)
+
+## Fans of authoritarians
+
+In my opinion, the question most suggestive of you being a fan of authoritarism is the "A few strong leaders could make this country better than all the laws and talk" question, which has been asked across the years with a few variations.
+
+```{r}
+#| label: tbl-strongleaders
+#| tbl-cap: "Stong leaders question details"
+
+
+datadefn <- data.frame(
+  stringsAsFactors = FALSE,
+          varnames = c("WSTRONG","ystrongl","zstrong",
+                       "jleaders","dleaders","rleaders","F7_2"),
+             eyear = c(2002L, 2005L, 2008L, 2011L, 2014L, 2017L, 2020L),
+      descriptions = c("F8. A few strong leaders could make this country better than all the laws and talk",
+                       "F15b Strong Leaders Make Country Better",
+                       "G9c: Strong Leaders Better",
+                       "E16b: a few strong leaders could make this country better than all the laws and talk",
+                       "E15b: a few strong leaders could make this country better than all the laws and talk",
+                       "E15b: a few strong leaders could make this country better than all the laws and  talk","Strong Leaders Make Country Better"))
+
+kable(datadefn)
+
+```
+
+```{r}
+#| label: tbl-strongleaderssteps
+#| tbl-cap: "Strong Leaders 2017 choices"
+kable(order_contents(nzs17[[datadefn$varnames[datadefn$eyear == "2017"]]]))
+```
+
+```{r}
+grafdata <- yes_no_dunno(nzs02, datadefn$varnames[datadefn$eyear == "2002"]) |> 
+  bind_rows(yes_no_dunno(nzs05, datadefn$varnames[datadefn$eyear == "2005"])) |> 
+  bind_rows(yes_no_dunno(nzs08, datadefn$varnames[datadefn$eyear == "2008"])) |> 
+  bind_rows(yes_no_dunno(nzs11, datadefn$varnames[datadefn$eyear == "2011"])) |> 
+  bind_rows(yes_no_dunno(nzs14, datadefn$varnames[datadefn$eyear == "2014"])) |> 
+  bind_rows(yes_no_dunno(nzs17, datadefn$varnames[datadefn$eyear == "2017"])) |> 
+  bind_rows(yes_no_dunno(nzs20, datadefn$varnames[datadefn$eyear == "2020"])) |> 
+  filter(!is.na(Age),!is.na(Gender), Gender %in% c("Male", "Female")) |> 
+  pivot_longer(Strongly_Agree:Dont_Know, names_to = "Response", values_to = "Percentage") |> 
+  mutate(Percentage = ifelse(Response == "Dont_Know" & Percentage == 0, NA_real_, Percentage))
+```
+
+```{r}
+ggplot(grafdata, aes(x=Year, y=Percentage, colour=Gender)) +
+  geom_point(alpha=0.2) + geom_line() + 
+  facet_grid(Age ~ Response) +
+  theme_davidhood() +
+  scale_color_colorblind() +
+  labs(title="NZES responses to 'A few strong leaders could make the country\nbetter than all the laws and talking'",
+       subtitle="Percentage of respondents, Don't knows and extreme repsonses only",
+       caption = "Source Data: New Zealand Election Study")
+```
+
+With 18-30 males being no more pro strong leaders than females of the same age (and all ages decreasing in strong agreement), and 18 to 30 year old males be more opposed to strong leaders than females of the same age, there is no evidence that any group is moving away from the rule of law and talking out things.
+
+
+## The trade unions have too much power question
+
+Questions about trade union power are seen as a classic left/right worker/capital division point
+
+```{r}
+#| label: tbl-unionpower
+#| tbl-cap: "Do unions' have too much power"
+datadefn <- data.frame(
+  stringsAsFactors = FALSE,
+          varnames = c("WUNPOW","yunpow","zunpow",
+                       "junions","dunions","runions","C18_2"),
+             eyear = c(2002L, 2005L, 2008L, 2011L, 2014L, 2017L, 2020L),
+      descriptions = c("C17. Trade unions in NZ have too much power","C14h Unions too Powerful",
+                       "D10e: Unions Too Powerful",
+                       "B6f: trade unions in NZ have too much power","C7b: trade unions in NZ have too much power",
+                       "C9b: trade unions in NZ have too much power",
+                       "Trade Unions Too Much Power")
+)
+
+kable(datadefn)
+```
+
+```{r}
+#| label: tbl-unionpoweropts
+#| tbl-cap: "Do unions' have too much power 2017 choices"
+kable(order_contents(nzs17[[datadefn$varnames[datadefn$eyear == "2017"]]]))
+```
+
+```{r}
+grafdata <- yes_no_dunno(nzs02, datadefn$varnames[datadefn$eyear == "2002"]) |> 
+  bind_rows(yes_no_dunno(nzs05, datadefn$varnames[datadefn$eyear == "2005"])) |> 
+  bind_rows(yes_no_dunno(nzs08, datadefn$varnames[datadefn$eyear == "2008"])) |> 
+  bind_rows(yes_no_dunno(nzs11, datadefn$varnames[datadefn$eyear == "2011"])) |> 
+  bind_rows(yes_no_dunno(nzs14, datadefn$varnames[datadefn$eyear == "2014"])) |> 
+  bind_rows(yes_no_dunno(nzs17, datadefn$varnames[datadefn$eyear == "2017"])) |> 
+  bind_rows(yes_no_dunno(nzs20, datadefn$varnames[datadefn$eyear == "2020"])) |> 
+  filter(!is.na(Age),!is.na(Gender), Gender %in% c("Male", "Female")) |> 
+  pivot_longer(Strongly_Agree:Dont_Know, names_to = "Response", values_to = "Percentage") |> 
+  mutate(Percentage = ifelse(Response == "Dont_Know" & Percentage == 0, NA_real_, Percentage))
+```
+
+```{r}
+ggplot(grafdata, aes(x=Year, y=Percentage, colour=Gender)) +
+  geom_point(alpha=0.2) + geom_line() + 
+  facet_grid(Age ~ Response) +
+  theme_davidhood() +
+  scale_color_colorblind() +
+  labs(title="NZES responses to 'trade unions in NZ have too much power'",
+       subtitle="Percentage of respondents, Don't knows and extreme repsonses only",
+       caption = "Source Data: New Zealand Election Study")
+```
+
+There is no detectable gender difference that has built up over the decades on the question of union power.
+
+## The unions are necessary question
+
+There is a slightly different formation of the question, a are unions' necessary to protect workers question that is worth checking as well.
+
+```{r}
+#| label: tbl-unionneeded
+#| tbl-cap: "Are unions' needed to protect workers"
+datadefn <- data.frame(
+  stringsAsFactors = FALSE,
+          varnames = c("WUNION","yunprot","zunions",
+                       "junprot","dunprot","runprot","C22_1"),
+             eyear = c(2002L, 2005L, 2008L, 2011L, 2014L, 2017L, 2020L),
+      descriptions = c("C17. Trade unions are necessary to protect workers","C14f Unions Necessary to Protect",
+                       "D10c: Unions Necessary to Protect",
+                       "B8b: trade unions are necessary to protect workers",
+                       "C7k: trade unions are necessary to protect workers",
+                       "C10a: trade unions are necessary to protect workers","Trade Unions Necessary")
+)
+kable(datadefn)
+```
+
+```{r}
+#| label: tbl-unionneededopts
+#| tbl-cap: "Are unions' needed to protect workers 2017 choices"
+kable(order_contents(nzs17[[datadefn$varnames[datadefn$eyear == "2017"]]]))
+```
+
+```{r}
+grafdata <- yes_no_dunno(nzs02, datadefn$varnames[datadefn$eyear == "2002"]) |> 
+  bind_rows(yes_no_dunno(nzs05, datadefn$varnames[datadefn$eyear == "2005"])) |> 
+  bind_rows(yes_no_dunno(nzs08, datadefn$varnames[datadefn$eyear == "2008"])) |> 
+  bind_rows(yes_no_dunno(nzs11, datadefn$varnames[datadefn$eyear == "2011"])) |> 
+  bind_rows(yes_no_dunno(nzs14, datadefn$varnames[datadefn$eyear == "2014"])) |> 
+  bind_rows(yes_no_dunno(nzs17, datadefn$varnames[datadefn$eyear == "2017"])) |> 
+  bind_rows(yes_no_dunno(nzs20, datadefn$varnames[datadefn$eyear == "2020"])) |> 
+  filter(!is.na(Age),!is.na(Gender), Gender %in% c("Male", "Female")) |> 
+  pivot_longer(Strongly_Agree:Dont_Know, names_to = "Response", values_to = "Percentage") |> 
+  mutate(Percentage = ifelse(Response == "Dont_Know" & Percentage == 0, NA_real_, Percentage))
+```
+
+```{r}
+ggplot(grafdata, aes(x=Year, y=Percentage, colour=Gender)) +
+  geom_point(alpha=0.2) + geom_line() + 
+  facet_grid(Age ~ Response) +
+  theme_davidhood() +
+  scale_color_colorblind() +
+  labs(title="NZES responses to 'trade unions are necessary to protect workers'",
+       subtitle="Percentage of respondents, Don't knows and extreme repsonses only",
+       caption = "Source Data: New Zealand Election Study")
+```
+
+There has been a generally rising trend of strongly agreeing unions are necessary to protect workers, while strongly disagreeing has been flat. This trend is not noticeably different by gender or age.
+
+## Te Tiriti o Waitangi (no 2011 entry)
+
+It is possible to do authoritarian fascism without doing white supremacy, as several countries around the world have been demonstrating. But in a New Zealand context, people leaning towards authoritarian fascism target the Treaty of Waitangi both for creating an "other" out of Maori, and that the treaty constrains the unilateral use of power.
+
+
+```{r}
+#| label: tbl-notreaty
+#| tbl-cap: "Remove Treaty from Law"
+
+datadefn <- data.frame(
+  stringsAsFactors = FALSE,
+          varnames = c("WTREAT","ytreaty",
+                       "ztreaty","dtreaty","rtreaty","C22_2"),
+             eyear = c(2002L, 2005L, 2008L, 2014L, 2017L, 2020L),
+      descriptions = c("C19. References to the Treaty of Waitangi should be removed from the law",
+                       "C12a Remove Treaty from Law","D10a: Remove Treaty From Law",
+                       "C7l: reference to the Treaty of Waitangi should be removed from the law",
+                       "C10b: reference to the Treaty of Waitangi should be removed from the law",
+                       "Remove Treaty From Law")
+)
+
+
+kable(datadefn)
+```
+
+```{r}
+#| label: tbl-notreatyopts
+#| tbl-cap: "References to the Treaty of Waitangi should be removed from the law 2017 choices"
+kable(order_contents(nzs17[[datadefn$varnames[datadefn$eyear == "2017"]]]))
+```
+
+```{r}
+grafdata <- yes_no_dunno(nzs02, datadefn$varnames[datadefn$eyear == "2002"]) |> 
+  bind_rows(yes_no_dunno(nzs05, datadefn$varnames[datadefn$eyear == "2005"])) |> 
+  bind_rows(yes_no_dunno(nzs08, datadefn$varnames[datadefn$eyear == "2008"])) |> 
+  bind_rows(yes_no_dunno(nzs11, datadefn$varnames[datadefn$eyear == "2011"])) |> 
+  bind_rows(yes_no_dunno(nzs14, datadefn$varnames[datadefn$eyear == "2014"])) |> 
+  bind_rows(yes_no_dunno(nzs17, datadefn$varnames[datadefn$eyear == "2017"])) |> 
+  bind_rows(yes_no_dunno(nzs20, datadefn$varnames[datadefn$eyear == "2020"])) |> 
+  filter(!is.na(Age),!is.na(Gender), Gender %in% c("Male", "Female")) |> 
+  pivot_longer(Strongly_Agree:Dont_Know, names_to = "Response", values_to = "Percentage") |> 
+  mutate(Percentage = ifelse(Response == "Dont_Know" & Percentage == 0, NA_real_, Percentage))
+```
+
+```{r}
+ggplot(grafdata, aes(x=Year, y=Percentage, colour=Gender)) +
+  geom_point(alpha=0.2) + geom_line() + 
+  facet_grid(Age ~ Response) +
+  theme_davidhood() +
+  scale_color_colorblind() +
+  labs(title="NZES responses to 'Get rid of the Treaty of Waitangi'",
+       subtitle="Percentage of respondents, Don't knows and extreme repsonses only",
+       caption = "Source Data: New Zealand Election Study")
+```
+
+Enthusiasm for getting rid of the treaty has been decreasing for all age groups, and while there is a gender division, it has remained pretty constant over the last few decades.
+
+## Spending to protect the environment (no 2008)
+
+Ecofascism is a thing, but it doesn't line up with more more public spending on the environment, which lines up more with green-liberalism and small-c conservative preservation.
+
+```{r}
+#| label: tbl-moreenviron
+#| tbl-cap: "More public spending on the environment"
+datadefn <- data.frame(
+  stringsAsFactors = FALSE,
+                      varnames = c("WENSPD","yenvspd","jspenviro","dspenviro",
+                                   "rspendenviro","C14_9"),
+             eyear = c(2002L, 2005L, 2011L, 2014L, 2017L, 2020L),
+                  descriptions = c("C1. Spending on Protecting the environment",
+                                   "C2a Spending on Environment",
+                                   "B3i: should there be more or less public spending on the environment",
+                                   "C4i: should there be more or less public spending on the environment",
+                                   "C5i: should there be more or less public spending on the environment",
+                                   "More or less public expenditure on the Environment")
+            )
+
+
+kable(datadefn)
+```
+
+```{r}
+#| label: tbl-moreenvironopts
+#| tbl-cap: "More public spending on the environment 2017 choices"
+kable(order_contents(nzs17[[datadefn$varnames[datadefn$eyear == "2017"]]]))
+```
+
+```{r}
+grafdata <- yes_no_dunno(nzs02, datadefn$varnames[datadefn$eyear == "2002"]) |> 
+  bind_rows(yes_no_dunno(nzs05, datadefn$varnames[datadefn$eyear == "2005"])) |> 
+  bind_rows(yes_no_dunno(nzs08, datadefn$varnames[datadefn$eyear == "2008"])) |> 
+  bind_rows(yes_no_dunno(nzs11, datadefn$varnames[datadefn$eyear == "2011"])) |> 
+  bind_rows(yes_no_dunno(nzs14, datadefn$varnames[datadefn$eyear == "2014"])) |> 
+  bind_rows(yes_no_dunno(nzs17, datadefn$varnames[datadefn$eyear == "2017"])) |> 
+  bind_rows(yes_no_dunno(nzs20, datadefn$varnames[datadefn$eyear == "2020"])) |> 
+  filter(!is.na(Age),!is.na(Gender), Gender %in% c("Male", "Female")) |> 
+  pivot_longer(Strongly_Agree:Dont_Know, names_to = "Response", values_to = "Percentage") |> 
+  mutate(Percentage = ifelse(Response == "Dont_Know" & Percentage == 0, NA_real_, Percentage),
+         Response = case_when(Response == "Strongly_Agree" ~ "More_spending",
+                              Response == "Strongly_Disagree" ~ "Less_Spending",
+                              Response == "Dont_Know" ~ "Dont_Know"))
+```
+
+
+```{r}
+ggplot(grafdata, aes(x=Year, y=Percentage, colour=Gender)) +
+  geom_point(alpha=0.2) + geom_line() + 
+  facet_grid(Age ~ Response) +
+  theme_davidhood() +
+  scale_color_colorblind() +
+  labs(title="NZES responses to 'More public spending on the environment'",
+       subtitle="Percentage of respondents, Don't knows and extreme repsonses only",
+       caption = "Source Data: New Zealand Election Study")
+```
+
+With respect to government spending on the environment, both men and women of all ages have increasingly supported more spending.
+
+
+## Favour Environment vs. development (no 2011)
+
+Rather than a question about degree of public spending, another approach is the balance between environmental protection (a shared benefit/limitation) vs income/development (which has more personal benefits)
+
+```{r}
+#| label: tbl-endev
+#| tbl-cap: "More public spending on the environment"
+datadefn <- data.frame(
+  stringsAsFactors = FALSE,
+          varnames = c("WENPRT","yenprot","zenvprt",
+                       "decovsenv","renvvseco","C10"),
+             eyear = c(2002L, 2005L, 2008L, 2014L, 2017L, 2020L),
+      descriptions = c("C2. Environment Protection v. Incomes","C1 Protect Environment or Keep Incomes",
+                       "D1: Incomes Before Environment",
+                       "C8: where you stand between protecting the environment and promoting economic development",
+                       "C8: do more to protect the environment or to encourage economic development",
+                       "Environment Versus Development")
+)
+
+kable(datadefn)
+```
+
+```{r}
+#| label: tbl-endevopts
+#| tbl-cap: "More public spending on the environment 2017 choices"
+kable(order_contents(nzs17[[datadefn$varnames[datadefn$eyear == "2017"]]]))
+```
+
+This is a seven point scale rather than the 5 point of most other questions, so there is more scope to pick something other than an extreme.
+
+```{r}
+grafdata <- yes_no_dunno(nzs02, datadefn$varnames[datadefn$eyear == "2002"],thumbsdown=7, waitwhat=8) |> 
+  bind_rows(yes_no_dunno(nzs05, datadefn$varnames[datadefn$eyear == "2005"],thumbsdown=7, waitwhat=8)) |> 
+  bind_rows(yes_no_dunno(nzs08, datadefn$varnames[datadefn$eyear == "2008"],thumbsdown=7, waitwhat=8)) |> 
+  bind_rows(yes_no_dunno(nzs11, datadefn$varnames[datadefn$eyear == "2011"],thumbsdown=7, waitwhat=8)) |> 
+  bind_rows(yes_no_dunno(nzs14, datadefn$varnames[datadefn$eyear == "2014"],thumbsdown=7, waitwhat=8)) |> 
+  bind_rows(yes_no_dunno(nzs17, datadefn$varnames[datadefn$eyear == "2017"],thumbsdown=7, waitwhat=8)) |> 
+  bind_rows(yes_no_dunno(nzs20, datadefn$varnames[datadefn$eyear == "2020"],thumbsdown=7, waitwhat=8)) |> 
+  filter(!is.na(Age),!is.na(Gender), Gender %in% c("Male", "Female")) |> 
+  pivot_longer(Strongly_Agree:Dont_Know, names_to = "Response", values_to = "Percentage") |> 
+  mutate(Percentage = ifelse(Response == "Dont_Know" & Percentage == 0, NA_real_, Percentage),
+         Response = case_when(Response == "Strongly_Agree" ~ "More_Environment",
+                              Response == "Strongly_Disagree" ~ "More_Development",
+                              Response == "Dont_Know" ~ "Dont_Know"))
+```
+
+
+```{r}
+ggplot(grafdata, aes(x=Year, y=Percentage, colour=Gender)) +
+  geom_point(alpha=0.2) + geom_line() + 
+  facet_grid(Age ~ Response) +
+  theme_davidhood() +
+  scale_color_colorblind() +
+  labs(title="NZES responses to 'More environmental protection or more income/development'",
+       subtitle="Percentage of respondents, Don't knows and extreme repsonses only",
+       caption = "Source Data: New Zealand Election Study")
+```
+
+There is a gender difference in rates, but it is not changing by much over the years, and both young men and women are increasingly favouring the strongest possible answer on more environmental protections.
+
+## So, Big business?
+
+The does big business have too much power is another classic left/right class/capitalism question.
+
+```{r}
+#| label: tbl-bigbus
+#| tbl-cap: "Does big business have too much power"
+datadefn <- data.frame(
+  stringsAsFactors = FALSE,
+          varnames = c("WBIGBUS","ybuspow","zbigbus",
+                       "jbigbus","dbigbus","rbigbus","C22_4"),
+             eyear = c(2002L, 2005L, 2008L, 2011L, 2014L, 2017L, 2020L),
+      descriptions = c("C17. Big business in NZ has too much power","C14g Big business Too Powerful",
+                       "D10d: Big Business Too Powerful",
+                       "B6c: big business in NZ has too much power",
+                       "C7m: big business in NZ has too much power","C10d: big business in NZ has too much power",
+                       "Big Business Too Much Power")
+)
+
+kable(datadefn)
+```
+
+```{r}
+#| label: tbl-bigbusoptsopts
+#| tbl-cap: "Does big business have too much power 2017 choices"
+kable(order_contents(nzs17[[datadefn$varnames[datadefn$eyear == "2017"]]]))
+```
+
+
+```{r}
+grafdata <- yes_no_dunno(nzs02, datadefn$varnames[datadefn$eyear == "2002"]) |> 
+  bind_rows(yes_no_dunno(nzs05, datadefn$varnames[datadefn$eyear == "2005"])) |> 
+  bind_rows(yes_no_dunno(nzs08, datadefn$varnames[datadefn$eyear == "2008"])) |> 
+  bind_rows(yes_no_dunno(nzs11, datadefn$varnames[datadefn$eyear == "2011"])) |> 
+  bind_rows(yes_no_dunno(nzs14, datadefn$varnames[datadefn$eyear == "2014"])) |> 
+  bind_rows(yes_no_dunno(nzs17, datadefn$varnames[datadefn$eyear == "2017"])) |> 
+  bind_rows(yes_no_dunno(nzs20, datadefn$varnames[datadefn$eyear == "2020"])) |> 
+  filter(!is.na(Age),!is.na(Gender), Gender %in% c("Male", "Female")) |> 
+  pivot_longer(Strongly_Agree:Dont_Know, names_to = "Response", values_to = "Percentage") |> 
+  mutate(Percentage = ifelse(Response == "Dont_Know" & Percentage == 0, NA_real_, Percentage))
+```
+
+
+```{r}
+ggplot(grafdata, aes(x=Year, y=Percentage, colour=Gender)) +
+  geom_point(alpha=0.2) + geom_line() + 
+  facet_grid(Age ~ Response) +
+  theme_davidhood() +
+  scale_color_colorblind() +
+  labs(title="NZES responses to 'Does big business have too much power'",
+       subtitle="Percentage of respondents, Don't knows and extreme repsonses only",
+       caption = "Source Data: New Zealand Election Study")
+```
+
+
+# Government should provide a job for everyone who wants one
+
+A question about the scope of the state
+
+```{r}
+#| label: tbl-givejob
+#| tbl-cap: "Government should provide a job for everyone who wants one"
+datadefn <- data.frame(
+  stringsAsFactors = FALSE,
+          varnames = c("ygovjob", "zgovjob", "jgovjob", "rjobsforall", "C21_1"),
+             eyear = c(2005L, 2008L, 2011L, 2017L, 2020L),
+      descriptions = c("C15a Government Provide Jobs",
+                       "D14a: Government Responsible for Jobs",
+                       "B7a: government should provide a job for everyone who wants one",
+                       "C14a: should government provide a job for everyone that wants one?","Government Responsible For Providing Jobs")
+)
+
+
+kable(datadefn)
+```
+
+```{r}
+#| label: tbl-givejobopts
+#| tbl-cap: "Government should provide a job for everyone who wants one 2017 choices"
+kable(order_contents(nzs17[[datadefn$varnames[datadefn$eyear == "2017"]]]))
+```
+
+This is a 4 point scale, so has less opportunity to pick a non-extreme result
+
+```{r}
+grafdata <- yes_no_dunno(nzs02, datadefn$varnames[datadefn$eyear == "2002"],thumbsdown=4, waitwhat=5) |> 
+  bind_rows(yes_no_dunno(nzs05, datadefn$varnames[datadefn$eyear == "2005"],thumbsdown=4, waitwhat=5)) |> 
+  bind_rows(yes_no_dunno(nzs08, datadefn$varnames[datadefn$eyear == "2008"],thumbsdown=4, waitwhat=5)) |> 
+  bind_rows(yes_no_dunno(nzs11, datadefn$varnames[datadefn$eyear == "2011"],thumbsdown=4, waitwhat=5)) |> 
+  bind_rows(yes_no_dunno(nzs14, datadefn$varnames[datadefn$eyear == "2014"],thumbsdown=4, waitwhat=5)) |> 
+  bind_rows(yes_no_dunno(nzs17, datadefn$varnames[datadefn$eyear == "2017"],thumbsdown=4, waitwhat=5)) |> 
+  bind_rows(yes_no_dunno(nzs20, datadefn$varnames[datadefn$eyear == "2020"],thumbsdown=4, waitwhat=5)) |> 
+  filter(!is.na(Age),!is.na(Gender), Gender %in% c("Male", "Female")) |> 
+  pivot_longer(Strongly_Agree:Dont_Know, names_to = "Response", values_to = "Percentage") |> 
+  mutate(Percentage = ifelse(Response == "Dont_Know" & Percentage == 0, NA_real_, Percentage),
+         Response = case_when(Response == "Strongly_Agree" ~ "Strong_should",
+                              Response == "Strongly_Disagree" ~ "Strong_should_not",
+                              Response == "Dont_Know" ~ "Dont_Know"))
+```
+
+
+```{r}
+ggplot(grafdata, aes(x=Year, y=Percentage, colour=Gender)) +
+  geom_point(alpha=0.2) + geom_line() + 
+  facet_grid(Age ~ Response) +
+  theme_davidhood() +
+  scale_color_colorblind() +
+  labs(title="NZES responses to 'Government should provide a job'",
+       subtitle="Percentage of respondents, Don't knows and extreme repsonses only",
+       caption = "Source Data: New Zealand Election Study")
+```
+
+There is no particular divergence by gender.
+
+## ladies better in the home
+
+A question only asked a few times, but at the start and end of the data period.
+
+```{r}
+#| label: tbl-lady
+#| tbl-cap: "Society would be better off if more women stayed home with their childre"
+datadefn <- data.frame(
+  stringsAsFactors = FALSE,
+          varnames = c("WSTAYHM", "rwomenathome", "C22_6"),
+             eyear = c(2002L, 2017L, 2020L),
+      descriptions = c("C12. Society would be better off if more women stayed home with their children",
+                       "C10f: society would be better off if women stayed home with their children","Women Should Stay Home With Children")
+)
+
+
+kable(datadefn)
+```
+
+```{r}
+#| label: tbl-ladyopts
+#| tbl-cap: "Society would be better off if more women stayed home with their children 2017 choices"
+kable(order_contents(nzs17[[datadefn$varnames[datadefn$eyear == "2017"]]]))
+```
+
+```{r}
+grafdata <- yes_no_dunno(nzs02, datadefn$varnames[datadefn$eyear == "2002"]) |> 
+  bind_rows(yes_no_dunno(nzs05, datadefn$varnames[datadefn$eyear == "2005"])) |> 
+  bind_rows(yes_no_dunno(nzs08, datadefn$varnames[datadefn$eyear == "2008"])) |> 
+  bind_rows(yes_no_dunno(nzs11, datadefn$varnames[datadefn$eyear == "2011"])) |> 
+  bind_rows(yes_no_dunno(nzs14, datadefn$varnames[datadefn$eyear == "2014"])) |> 
+  bind_rows(yes_no_dunno(nzs17, datadefn$varnames[datadefn$eyear == "2017"])) |> 
+  bind_rows(yes_no_dunno(nzs20, datadefn$varnames[datadefn$eyear == "2020"])) |> 
+  filter(!is.na(Age),!is.na(Gender), Gender %in% c("Male", "Female")) |> 
+  pivot_longer(Strongly_Agree:Dont_Know, names_to = "Response", values_to = "Percentage") |> 
+  mutate(Percentage = ifelse(Response == "Dont_Know" & Percentage == 0, NA_real_, Percentage))
+```
+
+```{r}
+ggplot(grafdata, aes(x=Year, y=Percentage, colour=Gender)) +
+  geom_point(alpha=0.2) + geom_line() + 
+  facet_grid(Age ~ Response) +
+  theme_davidhood() +
+  scale_color_colorblind() +
+  labs(title="NZES responses to 'Society would be better off if more women stayed\nhome with their children'",
+       subtitle="Percentage of respondents, Don't knows and extreme repsonses only",
+       caption = "Source Data: New Zealand Election Study")
+```
+
+While there is a big change, it is all in the same direction, and shared by all ages and genders.
